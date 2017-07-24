@@ -13,10 +13,11 @@ The goals / steps of this project are the following:
 
 [image1]: ./writeup_images/calibration_results.png "Undistorted"
 [image2]: ./writeup_images/undistortion_test.png "Road Transformed"
-[image3]: ./examples/binary_combo_example.jpg "Binary Example"
-[image4]: ./examples/warped_straight_lines.jpg "Warp Example"
-[image5]: ./examples/color_fit_lines.jpg "Fit Visual"
-[image6]: ./examples/example_output.jpg "Output"
+[image3]: ./writeup_images/combined_thresh.png "Binary Example"
+[image4]: ./writeup_images/perspective_test.png "Warp Example"
+[lines]:  ./output_images/persp_lines.jpg "Warp method"
+[image5]: ./output_images/window_fit.jpg "Fit Visual"
+[image6]: ./writeup_images/results.png "Output"
 [video1]: ./project_video.mp4 "Video"
 
 ## Rubric Points
@@ -58,35 +59,46 @@ It is possible to notice the camera distortion on the sides of the image, on the
 
 #### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+I used a combination of color and gradient thresholds to generate a binary image using the functions defined in the code cells 4 through 7.  I played a bit with the thresholds to see how I could isolate better the lane line pixels. Here is a screeshots of one of these attempts.
 
 ![alt text][image3]
 
+I ended up using a combination of saturation HLS channel, value HSV channel, sobel x and sobel y thresholds.
+
 #### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
+The code for my perspective transform includes a function called `warper()`, which appears in the 2nd code cell of the IPython notebook Project.ipynb.  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.
+
+The source points were chosen by drawing lines on the image and trying to make them match the lane lines like shown on the image below: 
+
+![alt text][lines]
+
+At the end the four source points chosen were:
 
 ```python
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
+src = [[  590.   455.]  # top left
+       [  270.   680.]  # bottom left 
+       [ 1054.   680.]  # bottom right
+       [  698.   455.]] # top right
 ```
 
+For the destination points I found that a good approximation was to plot one of the lines at 1/4 of the width and the other at 3/4 all the way from zero to its full height:
+
+```python
+dst = np.float32([
+    (img.shape[1]/4, 0), # top left
+    (img.shape[1]/4, img.shape[0]), # bottom left
+    (img.shape[1]*3/4, img.shape[0]), # bottom right
+    (img.shape[1]*3/4, 0)]) # top right
+```
 This resulted in the following source and destination points:
 
 | Source        | Destination   | 
 |:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+| 590, 455      | 320, 0        | 
+| 270, 680      | 320, 720      |
+| 1054, 680     | 960, 720      |
+| 698, 455      | 960, 0        |
 
 I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
 
@@ -94,17 +106,27 @@ I verified that my perspective transform was working as expected by drawing the 
 
 #### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+After running the perspective transform and obtaining the warped image, I implemented a sliding window search which consists of a technique that divides the image in windows and for each window it averaged the x coordinates of the pixels to find the line centroids. After the search scanned all the warped image, it combined the centroids to draw the lane lines. The result of the sliding windows search was as follows
 
 ![alt text][image5]
 
+I then fit a 2nd order polynomial to these lane lines using `numpy.polyfit()`
+
 #### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
-I did this in lines # through # in my code in `my_other_file.py`
+I used the formula provided in the lesson to calculate the radius of curvature. This line of code is where the magic happened.
+
+```python
+    ym_per_pix = 10/720
+    xm_per_pix = 4/384
+    curve_fit_cr = np.polyfit(np.array(res_yvals, np.float32)*ym_per_pix, np.array(leftx,np.float32)*xm_per_pix, 2)
+    curverad = ((1 + (2*curve_fit_cr[0]*yvals[-1]*ym_per_pix + curve_fit_cr[1])**2)**1.5)/np.absolute(2*curve_fit_cr[0])
+```
+The first two lines consisted of ratios to convert pixels to meters in real world dimensions. The othe two lines consisted of the actual radius of curvature calculation which was done in two steps: another polynomial fit and the radius of curvature equation for a given curve.
 
 #### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+I implemented this step in the code cells 12 and 15.  Here is an example of my result on a test image:
 
 ![alt text][image6]
 
@@ -114,7 +136,7 @@ I implemented this step in lines # through # in my code in `yet_another_file.py`
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result](./final_video.mp4)
 
 ---
 
@@ -122,4 +144,8 @@ Here's a [link to my video result](./project_video.mp4)
 
 #### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+The pipeline still needs a lot of manual parameter tuning and once tuned these parameters keep the same value forever.
+
+This makes it not so robust and flexible to different pavement colors or big changes in light, even though it does much bettter than the first projects pipeline.
+
+If there was a way to make the pipeline learn to adapt to different environments I guess that would make it more robust. That can be achieved with the use of other sensors, not just cameras.
